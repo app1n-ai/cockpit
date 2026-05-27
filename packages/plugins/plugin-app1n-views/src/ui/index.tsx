@@ -87,6 +87,35 @@ type MissionStatus = {
   totalHandoffs?: number;
 };
 
+type GithubPR = {
+  repo: string;
+  number: number;
+  title: string;
+  state: string;
+  url: string;
+  error?: string;
+};
+
+type GithubData = {
+  repos: string[];
+  prs: GithubPR[];
+  fetchedAt?: string;
+};
+
+type GcpService = {
+  name: string;
+  url: string;
+  ready: boolean;
+  isProd: boolean;
+  error?: string;
+};
+
+type GcpData = {
+  project: string;
+  services: GcpService[];
+  fetchedAt?: string;
+};
+
 // ── Hooks ─────────────────────────────────────────────────────────────────────
 
 function useFeatures(companyId: string) {
@@ -103,6 +132,14 @@ function useBrainDump(companyId: string) {
 
 function useMissionStatus(companyId: string) {
   return usePluginData<MissionStatus>(DATA_KEYS.missionStatus, { companyId });
+}
+
+function useFieldOpsGithub(companyId: string) {
+  return usePluginData<GithubData>(DATA_KEYS.fieldOpsGithub, { companyId });
+}
+
+function useFieldOpsGcp(companyId: string) {
+  return usePluginData<GcpData>(DATA_KEYS.fieldOpsGcp, { companyId });
 }
 
 // ── Priority color mapping ────────────────────────────────────────────────────
@@ -202,6 +239,14 @@ const IconPriorityMatrix = () => (
     <circle cx="17" cy="7" r="2.5" fill="currentColor" stroke="none" opacity="0.5" />
     <circle cx="7" cy="17" r="1.5" fill="currentColor" stroke="none" opacity="0.4" />
     <circle cx="17" cy="17" r="1" fill="currentColor" stroke="none" opacity="0.3" />
+  </svg>
+);
+
+const IconFieldOps = () => (
+  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="3" />
+    <path d="M2 12h3M19 12h3M12 2v3M12 19v3" />
+    <path d="M5.64 5.64l2.12 2.12M16.24 16.24l2.12 2.12M16.24 7.76l2.12-2.12M5.64 18.36l2.12-2.12" />
   </svg>
 );
 
@@ -590,6 +635,197 @@ export function App1nDashboardWidget({ context }: PluginWidgetProps) {
       <a {...nav.linkProps(`/${ROUTES.autopilot}`)} style={{ ...smallMuted, textDecoration: "underline" }}>
         Ver autopilot →
       </a>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FIELD OPS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function RepoGroup({ repo, prs }: { repo: string; prs: GithubPR[] }) {
+  const openPRs = prs.filter((p) => p.state === "OPEN" && !p.error);
+  return (
+    <div style={subtleCard}>
+      <div style={{ ...row, justifyContent: "space-between", marginBottom: "8px" }}>
+        <span style={{ fontWeight: 600, fontSize: "13px" }}>{repo.replace("app1n-ai/", "")}</span>
+        <span style={badge(openPRs.length > 0 ? "#d97706" : "#6b7280")}>
+          {openPRs.length} PR{openPRs.length !== 1 ? "s" : ""}
+        </span>
+      </div>
+      {openPRs.length === 0 && <p style={{ ...smallMuted, margin: 0 }}>Sem PRs abertos</p>}
+      {openPRs.map((pr) => (
+        <div key={pr.number} style={{ ...row, marginBottom: "4px" }}>
+          <span style={{ ...smallMuted, minWidth: "28px" }}>#{pr.number}</span>
+          <a
+            href={pr.url}
+            target="_blank"
+            rel="noreferrer"
+            style={{ fontSize: "12px", color: "var(--foreground)", textDecoration: "underline", flex: 1 }}
+          >
+            {pr.title}
+          </a>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function FieldOpsSidebarLink(_: PluginSidebarProps) {
+  return <SidebarLink route={ROUTES.fieldOps} label="Field Ops" icon={<IconFieldOps />} />;
+}
+
+export function FieldOpsPage({ context }: PluginPageProps) {
+  const companyId = context.companyId ?? "";
+  const githubResult = useFieldOpsGithub(companyId);
+  const gcpResult = useFieldOpsGcp(companyId);
+
+  const github = githubResult.data;
+  const gcp = gcpResult.data;
+
+  const prsByRepo = (github?.repos ?? []).reduce<Record<string, GithubPR[]>>((acc, repo) => {
+    acc[repo] = (github?.prs ?? []).filter((pr) => pr.repo === repo);
+    return acc;
+  }, {});
+
+  const totalOpenPRs = (github?.prs ?? []).filter((p) => p.state === "OPEN").length;
+
+  const readyServices = (gcp?.services ?? []).filter((s) => s.ready && !s.isProd);
+  const prodServices = (gcp?.services ?? []).filter((s) => s.isProd);
+  const readyProd = prodServices.filter((s) => s.ready);
+
+  const fiscal1nService = (gcp?.services ?? []).find((s) => s.name.includes("fiscal1n"));
+
+  return (
+    <div style={{ ...stack, padding: "24px", maxWidth: "900px" }}>
+      <h1 style={h1Style}>Field Ops</h1>
+      <p style={smallMuted}>Integrações operacionais: GitHub, GCP, fiscal1n, Sankhya</p>
+
+      {/* ── GitHub ───────────────────────────────────────────────────────── */}
+      <div style={card}>
+        <div style={{ ...row, marginBottom: "12px" }}>
+          <h2 style={h2Style}>GitHub — PRs abertos</h2>
+          <span style={badge(totalOpenPRs > 0 ? "#d97706" : "#16a34a")}>
+            {totalOpenPRs} total
+          </span>
+          {github?.fetchedAt && (
+            <span style={{ ...smallMuted, marginLeft: "auto" }}>
+              {new Date(github.fetchedAt).toLocaleTimeString("pt-BR")}
+            </span>
+          )}
+        </div>
+        {githubResult.loading && <p style={smallMuted}>Carregando PRs…</p>}
+        {!githubResult.loading && (
+          <div style={stack}>
+            {(github?.repos ?? []).map((repo) => (
+              <RepoGroup key={repo} repo={repo} prs={prsByRepo[repo] ?? []} />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── GCP Cloud Run ────────────────────────────────────────────────── */}
+      <div style={card}>
+        <div style={{ ...row, marginBottom: "12px" }}>
+          <h2 style={h2Style}>GCP Cloud Run</h2>
+          <span style={badge(readyServices.length > 0 ? "#16a34a" : "#6b7280")}>
+            {readyServices.length} ok
+          </span>
+          {gcp?.fetchedAt && (
+            <span style={{ ...smallMuted, marginLeft: "auto" }}>
+              {new Date(gcp.fetchedAt).toLocaleTimeString("pt-BR")}
+            </span>
+          )}
+        </div>
+        {gcpResult.loading && <p style={smallMuted}>Carregando serviços…</p>}
+        {!gcpResult.loading && (
+          <div style={stack}>
+            {(gcp?.services ?? []).map((svc) => (
+              <div key={svc.name} style={{ ...row, justifyContent: "space-between" }}>
+                <div style={{ flex: 1 }}>
+                  <span style={{ fontSize: "13px", fontWeight: svc.isProd ? 700 : 500 }}>
+                    {svc.name}
+                  </span>
+                  {svc.isProd && (
+                    <span style={{ ...badge("#6b7280"), marginLeft: "6px", fontSize: "10px" }}>prod</span>
+                  )}
+                </div>
+                <span style={badge(svc.ready ? "#16a34a" : "#dc2626")}>
+                  {svc.ready ? "ready" : "not ready"}
+                </span>
+              </div>
+            ))}
+            {(gcp?.services ?? []).length === 0 && (
+              <p style={smallMuted}>Sem serviços encontrados</p>
+            )}
+          </div>
+        )}
+        <div style={{ ...row, marginTop: "12px", gap: "16px" }}>
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontSize: "20px", fontWeight: 700, color: "#16a34a" }}>
+              {readyServices.length}
+            </div>
+            <div style={smallMuted}>homol ok</div>
+          </div>
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontSize: "20px", fontWeight: 700, color: readyProd.length === prodServices.length ? "#16a34a" : "#dc2626" }}>
+              {readyProd.length}/{prodServices.length}
+            </div>
+            <div style={smallMuted}>prod ok</div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── fiscal1n / WhatsApp bot ───────────────────────────────────────── */}
+      <div style={card}>
+        <div style={{ ...row, marginBottom: "12px" }}>
+          <h2 style={h2Style}>fiscal1n — Bot WhatsApp</h2>
+          <span style={badge(fiscal1nService?.ready ? "#16a34a" : "#dc2626")}>
+            {fiscal1nService?.ready ? "online" : fiscal1nService ? "offline" : "desconhecido"}
+          </span>
+        </div>
+        {fiscal1nService ? (
+          <div style={stack}>
+            <div style={{ ...row, justifyContent: "space-between" }}>
+              <span style={{ fontSize: "13px" }}>{fiscal1nService.name}</span>
+              <a
+                href={fiscal1nService.url}
+                target="_blank"
+                rel="noreferrer"
+                style={{ ...smallMuted, textDecoration: "underline" }}
+              >
+                {fiscal1nService.url.replace("https://", "")}
+              </a>
+            </div>
+            <p style={smallMuted}>
+              Bot de WhatsApp operacional via Cloud Run. Para envio de mensagens, use o endpoint /api/mensagem.
+            </p>
+          </div>
+        ) : (
+          <p style={smallMuted}>Serviço fiscal1n não encontrado no Cloud Run. Pode estar em outra região ou não implantado.</p>
+        )}
+      </div>
+
+      {/* ── Sankhya ──────────────────────────────────────────────────────── */}
+      <div style={card}>
+        <div style={{ ...row, marginBottom: "12px" }}>
+          <h2 style={h2Style}>Sankhya — ERP</h2>
+          <span style={badge("#6b7280")}>status via fix1n</span>
+        </div>
+        <p style={smallMuted}>
+          Integração Sankhya disponível via skill <code>avaliar-conexao-sankhya</code> no fix1n.
+          O status de conexão é verificado sob demanda — a skill retorna o estado atual do ERP quando invocada pelo kanban.
+        </p>
+        <div style={{ ...subtleCard, marginTop: "8px" }}>
+          <div style={{ ...row, justifyContent: "space-between" }}>
+            <span style={{ fontSize: "12px", fontWeight: 600 }}>fix1n/avaliar-conexao-sankhya</span>
+            <span style={badge("#2563eb")}>skill</span>
+          </div>
+          <p style={{ ...smallMuted, marginTop: "4px", marginBottom: 0 }}>
+            PR app1n-ai/app1n-skills#1 — aguarda review + merge para homol→main
+          </p>
+        </div>
+      </div>
     </div>
   );
 }
