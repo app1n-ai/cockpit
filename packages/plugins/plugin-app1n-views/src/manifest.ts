@@ -12,7 +12,7 @@ const manifest: PaperclipPluginManifestV1 = {
   apiVersion: 1,
   version: PLUGIN_VERSION,
   displayName: "app1n Views",
-  description: "Views MeisnerDan para o cockpit app1n: brain-dump, inbox, eisenhower, autopilot e priority-matrix.",
+  description: "Views MeisnerDan para o cockpit app1n: brain-dump, inbox, eisenhower, autopilot, priority-matrix e field-ops integrations (GitHub, GCP, fiscal1n, Sankhya).",
   author: "app1n",
   categories: ["ui", "automation"],
   capabilities: [
@@ -101,6 +101,19 @@ const manifest: PaperclipPluginManifestV1 = {
         id: SLOT_IDS.dashboardWidget,
         displayName: "app1n Status",
         exportName: EXPORT_NAMES.dashboardWidget,
+      },
+      {
+        type: "page",
+        id: SLOT_IDS.fieldOpsPage,
+        displayName: "Field Ops",
+        exportName: EXPORT_NAMES.fieldOpsPage,
+        routePath: ROUTES.fieldOps,
+      },
+      {
+        type: "sidebar",
+        id: SLOT_IDS.fieldOpsSidebar,
+        displayName: "Field Ops",
+        exportName: EXPORT_NAMES.fieldOpsSidebar,
       },
     ],
   },

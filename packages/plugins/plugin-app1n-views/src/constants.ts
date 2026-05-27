@@ -1,5 +1,5 @@
 export const PLUGIN_ID = "app1n.plugin-views";
-export const PLUGIN_VERSION = "0.1.0";
+export const PLUGIN_VERSION = "0.2.0";
 
 export const ROUTES = {
   brainDump: "app1n-brain-dump",
@@ -7,6 +7,7 @@ export const ROUTES = {
   eisenhower: "app1n-eisenhower",
   autopilot: "app1n-autopilot",
   priorityMatrix: "app1n-priority-matrix",
+  fieldOps: "app1n-field-ops",
 } as const;
 
 export const SLOT_IDS = {
@@ -21,6 +22,8 @@ export const SLOT_IDS = {
   priorityMatrixPage: "app1n-priority-matrix-page",
   priorityMatrixSidebar: "app1n-priority-matrix-sidebar",
   dashboardWidget: "app1n-views-dashboard-widget",
+  fieldOpsPage: "app1n-field-ops-page",
+  fieldOpsSidebar: "app1n-field-ops-sidebar",
 } as const;
 
 export const EXPORT_NAMES = {
@@ -35,6 +38,8 @@ export const EXPORT_NAMES = {
   priorityMatrixPage: "PriorityMatrixPage",
   priorityMatrixSidebar: "PriorityMatrixSidebarLink",
   dashboardWidget: "App1nDashboardWidget",
+  fieldOpsPage: "FieldOpsPage",
+  fieldOpsSidebar: "FieldOpsSidebarLink",
 } as const;
 
 export const DATA_KEYS = {
@@ -42,6 +47,8 @@ export const DATA_KEYS = {
   handoffs: "handoffs",
   brainDumpNotes: "brain-dump-notes",
   missionStatus: "mission-status",
+  fieldOpsGithub: "field-ops-github",
+  fieldOpsGcp: "field-ops-gcp",
 } as const;
 
 export const ACTION_KEYS = {
