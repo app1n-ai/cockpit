@@ -69,11 +69,12 @@ type GcpService = {
 
 function fetchGithubPRs(): GithubPR[] {
   const results: GithubPR[] = [];
+  const env = { ...process.env, HOME };
   for (const repo of APP1N_REPOS) {
     try {
       const raw = execSync(
         `gh pr list --repo ${repo} --json number,title,state,url --limit 10`,
-        { timeout: 10_000, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }
+        { timeout: 10_000, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"], env }
       );
       const prs = JSON.parse(raw) as Array<{ number: number; title: string; state: string; url: string }>;
       for (const pr of prs) {
