@@ -2642,6 +2642,120 @@ describeEmbeddedPostgres("issueService blockers and dependency wake readiness", 
       childIssueSummaryTruncated: false,
     });
   });
+
+  it("dependency detector: issue without parent_id and description containing all trigger words is NOT marked blocked", async () => {
+    const companyId = randomUUID();
+    await db.insert(companies).values({
+      id: companyId,
+      name: "Paperclip",
+      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      requireBoardApprovalForNewAgents: false,
+    });
+
+    const issueId = randomUUID();
+    await db.insert(issues).values({
+      id: issueId,
+      companyId,
+      title: "Issue sem dependência formal",
+      // Description contains all Portuguese trigger words from APP-88 hypothesis
+      description:
+        "Esta issue é independente. Não depende de nada. Não bloqueia nenhuma sequência. " +
+        "Não há pré-requisito. Não precisa destrava. Não há relação de dependência.",
+      status: "todo",
+      priority: "medium",
+    });
+
+    const readiness = await svc.getDependencyReadiness(issueId);
+    expect(readiness).toMatchObject({
+      issueId,
+      isDependencyReady: true,
+      unresolvedBlockerCount: 0,
+      unresolvedBlockerIssueIds: [],
+    });
+  });
+
+  it("dependency detector: issue with parent_id pointing to non-done parent is NOT dependency-ready", async () => {
+    const companyId = randomUUID();
+    await db.insert(companies).values({
+      id: companyId,
+      name: "Paperclip",
+      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      requireBoardApprovalForNewAgents: false,
+    });
+
+    const parentId = randomUUID();
+    const childId = randomUUID();
+    await db.insert(issues).values([
+      {
+        id: parentId,
+        companyId,
+        title: "Parent in progress",
+        status: "in_progress",
+        priority: "high",
+      },
+      {
+        id: childId,
+        companyId,
+        parentId,
+        title: "Child issue",
+        status: "todo",
+        priority: "medium",
+      },
+    ]);
+
+    const readiness = await svc.getDependencyReadiness(childId);
+    expect(readiness).toMatchObject({
+      issueId: childId,
+      isDependencyReady: false,
+      unresolvedBlockerCount: 1,
+      unresolvedBlockerIssueIds: [parentId],
+    });
+
+    // When the parent is marked done, the child becomes dependency-ready.
+    await svc.update(parentId, { status: "done" });
+    const readinessAfter = await svc.getDependencyReadiness(childId);
+    expect(readinessAfter).toMatchObject({
+      issueId: childId,
+      isDependencyReady: true,
+      unresolvedBlockerCount: 0,
+      unresolvedBlockerIssueIds: [],
+    });
+  });
+
+  it("dependency detector: issue with unresolved blockedByIssueIds is NOT dependency-ready", async () => {
+    const companyId = randomUUID();
+    await db.insert(companies).values({
+      id: companyId,
+      name: "Paperclip",
+      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      requireBoardApprovalForNewAgents: false,
+    });
+
+    const blockerId = randomUUID();
+    const blockedId = randomUUID();
+    await db.insert(issues).values([
+      { id: blockerId, companyId, title: "Explicit blocker", status: "todo", priority: "high" },
+      { id: blockedId, companyId, title: "Blocked by explicit relation", status: "todo", priority: "medium" },
+    ]);
+    await svc.update(blockedId, { blockedByIssueIds: [blockerId] });
+
+    const readiness = await svc.getDependencyReadiness(blockedId);
+    expect(readiness).toMatchObject({
+      issueId: blockedId,
+      isDependencyReady: false,
+      unresolvedBlockerCount: 1,
+      unresolvedBlockerIssueIds: [blockerId],
+    });
+
+    await svc.update(blockerId, { status: "done" });
+    const readinessAfter = await svc.getDependencyReadiness(blockedId);
+    expect(readinessAfter).toMatchObject({
+      issueId: blockedId,
+      isDependencyReady: true,
+      unresolvedBlockerCount: 0,
+      unresolvedBlockerIssueIds: [],
+    });
+  });
 });
 
 describeEmbeddedPostgres("issueService.create workspace inheritance", () => {

@@ -2482,6 +2482,24 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
           continue;
         }
 
+        // Guard: if this issue has already been recovered multiple times for a missing disposition
+        // (non-required handoff), stop re-creating recovery actions to prevent infinite loops.
+        const previousHandoffRecoveries = await db
+          .select({ id: issueRecoveryActions.id })
+          .from(issueRecoveryActions)
+          .where(
+            and(
+              eq(issueRecoveryActions.companyId, issue.companyId),
+              eq(issueRecoveryActions.sourceIssueId, issue.id),
+              eq(issueRecoveryActions.cause, SUCCESSFUL_RUN_MISSING_STATE_REASON),
+              notInArray(issueRecoveryActions.status, ["active", "escalated"]),
+            ),
+          );
+        if (previousHandoffRecoveries.length >= 3) {
+          result.skipped += 1;
+          continue;
+        }
+
         const updated = await escalateStrandedAssignedIssue({
           issue,
           previousStatus: "in_progress",
@@ -2529,6 +2547,21 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
           continue;
         }
 
+        const productiveContinuationGuardCount = await db
+          .select({ id: issueRecoveryActions.id })
+          .from(issueRecoveryActions)
+          .where(
+            and(
+              eq(issueRecoveryActions.companyId, issue.companyId),
+              eq(issueRecoveryActions.sourceIssueId, issue.id),
+              notInArray(issueRecoveryActions.status, ["active", "escalated"]),
+            ),
+          );
+        if (productiveContinuationGuardCount.length >= 5) {
+          result.skipped += 1;
+          continue;
+        }
+
         const queued = await enqueueStrandedIssueRecovery({
           issueId: issue.id,
           agentId,
@@ -2566,6 +2599,23 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
       }
 
       if (await isInvocationBudgetBlocked(issue, agentId)) {
+        result.skipped += 1;
+        continue;
+      }
+
+      // Guard: if this issue has had many resolved recovery actions, it's caught in a continuation
+      // loop where the harness keeps re-checking out a done issue. Stop enqueueing more wakes.
+      const totalResolvedRecoveries = await db
+        .select({ id: issueRecoveryActions.id })
+        .from(issueRecoveryActions)
+        .where(
+          and(
+            eq(issueRecoveryActions.companyId, issue.companyId),
+            eq(issueRecoveryActions.sourceIssueId, issue.id),
+            notInArray(issueRecoveryActions.status, ["active", "escalated"]),
+          ),
+        );
+      if (totalResolvedRecoveries.length >= 5) {
         result.skipped += 1;
         continue;
       }

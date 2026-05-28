@@ -1,5 +1,5 @@
 import { Buffer } from "node:buffer";
-import { and, asc, desc, eq, gt, inArray, isNull, like, lt, ne, notInArray, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, like, lt, ne, notInArray, or, sql, type SQL } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import {
   activityLog,
@@ -427,6 +427,48 @@ async function listIssueDependencyReadinessMap(
       current.isDependencyReady = false;
     }
     readinessMap.set(row.issueId, current);
+  }
+
+  // Check parent_id as a formal blocker source: a child issue is not
+  // dependency-ready when its parent is not yet done. This avoids false
+  // positives from description text while still capturing the structural
+  // dependency expressed by the parent–child relationship.
+  const issueParentRows = await dbOrTx
+    .select({ issueId: issues.id, parentId: issues.parentId })
+    .from(issues)
+    .where(
+      and(
+        eq(issues.companyId, companyId),
+        inArray(issues.id, uniqueIssueIds),
+        isNotNull(issues.parentId),
+      ),
+    );
+
+  if (issueParentRows.length > 0) {
+    const uniqueParentIds = [...new Set(issueParentRows.map((r) => r.parentId).filter((id): id is string => Boolean(id)))];
+    const parentStatusRows = await dbOrTx
+      .select({ id: issues.id, status: issues.status })
+      .from(issues)
+      .where(and(eq(issues.companyId, companyId), inArray(issues.id, uniqueParentIds)));
+
+    const parentStatusById = new Map(parentStatusRows.map((r) => [r.id, r.status]));
+
+    for (const { issueId, parentId } of issueParentRows) {
+      if (!parentId) continue;
+      const parentStatus = parentStatusById.get(parentId);
+      // Parent is a blocker only when it exists in the same company and is not done.
+      if (parentStatus && parentStatus !== "done") {
+        const current = readinessMap.get(issueId) ?? createIssueDependencyReadiness(issueId);
+        if (!current.blockerIssueIds.includes(parentId)) {
+          current.blockerIssueIds.push(parentId);
+          current.unresolvedBlockerIssueIds.push(parentId);
+          current.unresolvedBlockerCount += 1;
+          current.allBlockersDone = false;
+          current.isDependencyReady = false;
+          readinessMap.set(issueId, current);
+        }
+      }
+    }
   }
 
   return readinessMap;
